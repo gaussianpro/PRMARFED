@@ -100,9 +100,9 @@ def solve_policy(tau_JA, psi_s, label=""):
 C_pi_b, C_y_b = solve_policy(tau_JA=0.071, psi_s=0.30, label="BASELINE")
 C_pi_r, C_y_r = solve_policy(tau_JA=0.000, psi_s=0.00, label="REPEAL")
 
-===================================
+# ===================================
 # Asymptotic Business Cycle Moments
-===================================
+# ===================================
 
 import numpy as np
 
@@ -155,11 +155,11 @@ share_y = 100 * (C_y * sigma)**2 / (1 - rho**2) / var_y
 for n, s in zip(names, share_y):
     print(f"  {n:<12}: {s:6.2f}%")
 
-=====================
+# =====================
 
 # FEVD and IRF
 
-===================
+# ===================
 
 import numpy as np
 import pandas as pd
