@@ -1,274 +1,183 @@
-# Solves the undetermined-coefficients system with output-gap feedback
-# into the NKPC (ψ_y). Produces the baseline and repeal policy vectors
-# used in the paper.
-
-
+# ============================================================
+# Jones Act DSGE – policy vectors, moments, FEVD, IRFs
+# ============================================================
 import numpy as np
 from numpy.linalg import solve
+import pandas as pd
+import matplotlib.pyplot as plt
 
-# ============================================================
+# ------------------------------------------------------------
 # Parameters
-# ============================================================
-beta      = 0.99
-xi        = 0.75
-kappa     = (1 - xi)*(1 - beta*xi)/xi          # ≈ 0.08583
-sigma     = 2.0
-lam       = 0.42
-sigma_eff = sigma/(1 - lam)
-omega_AD  = 0.58
-Theta_ToT = 0.45
-Gamma_tr  = 0.15
-alpha     = 0.33
-phi_pi    = 1.8
-
+# ------------------------------------------------------------
+beta       = 0.99
+xi         = 0.75
+kappa      = (1 - xi)*(1 - beta*xi)/xi
+sigma      = 2.0
+lam        = 0.42
+sigma_eff  = sigma/(1 - lam)
+omega_AD   = 0.58
+Theta_ToT  = 0.45
+Gamma_tr   = 0.15
+alpha      = 0.33
+phi_pi     = 1.8
 gamma_dir  = 0.142
 theta_fuel = 0.50
 psi_s      = 0.30
+psi_y      = 0.08
 
-rho = np.array([0.684, 0.773, 0.739, 0.900, 0.869, 0.811])
+rho   = np.array([0.684, 0.773, 0.739, 0.900, 0.869, 0.811])
+sigma_shocks = np.array([0.0129, 0.0051, 0.1308, 0.0020, 0.0302, 0.0312])
 names = ['a (tech)', 'pi*', 'oil', 'nu_i', 'tr', 'ship']
 
-# Feedback from output gap into real marginal cost
-# (this is the key term that was previously set to zero)
-# Typical values in New Keynesian models: 0.1 – 0.5
-psi_y = 0.08          # <-- you can tune this
-
-# ============================================================
-# Solve for given tau_JA and psi_s
-# ============================================================
-def solve_policy(tau_JA, psi_s, label=""):
+# ------------------------------------------------------------
+# Policy-vector solver
+# ------------------------------------------------------------
+def solve_policy(tau_JA, psi_s_val, label=""):
     gamma = gamma_dir + tau_JA * theta_fuel
 
     def forcing(j):
-        # Cost-push component of marginal cost
-        if j == 0:   phi_mc = -(1 - alpha)          # technology
-        elif j == 1: phi_mc = +alpha                # US inflation
-        elif j == 2: phi_mc = +alpha * gamma        # oil
-        elif j == 5: phi_mc = +alpha * psi_s        # shipping
+        if j == 0:   phi_mc = -(1 - alpha)
+        elif j == 1: phi_mc = +alpha
+        elif j == 2: phi_mc = +alpha * gamma
+        elif j == 5: phi_mc = +alpha * psi_s_val
         else:        phi_mc = 0.0
-
         D_pi = kappa * phi_mc
 
-        # IS forcing
         rr = omega_AD / sigma_eff
         if j == 0:   D_y = 0.0
         elif j == 1: D_y = -rr * phi_pi
         elif j == 2: D_y = -Theta_ToT * gamma
         elif j == 3: D_y = -rr
         elif j == 4: D_y = +Gamma_tr
-        elif j == 5: D_y = -Theta_ToT * psi_s
+        elif j == 5: D_y = -Theta_ToT * psi_s_val
         else:        D_y = 0.0
-
         return D_pi, D_y
 
     C_pi = np.zeros(6)
     C_y  = np.zeros(6)
-
     for j in range(6):
         r = rho[j]
         D_pi, D_y = forcing(j)
-
-        # System with output-gap feedback into the NKPC:
-        # (1 - βρ) Cπ - κ·ψ_y · Cy  = D_pi
-        # (ρ/σ_eff) Cπ + (1 - ρ) Cy = D_y
         A = np.array([
             [1 - beta*r,   -kappa * psi_y],
             [r / sigma_eff, 1 - r        ]
         ])
-        b = np.array([D_pi, D_y])
-        sol = solve(A, b)
-        C_pi[j] = sol[0]
-        C_y[j]  = sol[1]
+        sol = solve(A, np.array([D_pi, D_y]))
+        C_pi[j], C_y[j] = sol[0], sol[1]
 
     print("="*65)
     print(f"POLICY VECTORS – {label}")
-    print(f"τ_JA = {tau_JA:.3f}   γ = {gamma:.4f}   ψ_s = {psi_s:.2f}   ψ_y = {psi_y}")
+    print(f"τ_JA = {tau_JA:.3f}   γ = {gamma:.4f}   ψ_s = {psi_s_val:.2f}   ψ_y = {psi_y}")
     print("="*65)
     print(f"{'Shock':<12} {'C_pi':>10} {'C_y':>10}")
     print("-"*35)
     for j, n in enumerate(names):
         print(f"{n:<12} {C_pi[j]:10.4f} {C_y[j]:10.4f}")
-    print()
-    print("C_pi =", np.round(C_pi, 4))
+    print("\nC_pi =", np.round(C_pi, 4))
     print("C_y  =", np.round(C_y, 4))
     print()
     return C_pi, C_y
 
-# ============================================================
+# ------------------------------------------------------------
 # Baseline and Repeal
-# ============================================================
-C_pi_b, C_y_b = solve_policy(tau_JA=0.071, psi_s=0.30, label="BASELINE")
-C_pi_r, C_y_r = solve_policy(tau_JA=0.000, psi_s=0.00, label="REPEAL")
+# ------------------------------------------------------------
+C_pi_b, C_y_b = solve_policy(0.071, 0.30, "BASELINE")
+C_pi_r, C_y_r = solve_policy(0.000, 0.00, "REPEAL")
 
-# ===================================
-# Asymptotic Business Cycle Moments
-# ===================================
+# ------------------------------------------------------------
+# Asymptotic moments (baseline)
+# ------------------------------------------------------------
+C_pi = C_pi_b
+C_y  = C_y_b
+sig  = sigma_shocks
 
-import numpy as np
+var_y  = np.sum((C_y  * sig)**2 / (1 - rho**2))
+var_pi = np.sum((C_pi * sig)**2 / (1 - rho**2))
+std_y, std_pi = np.sqrt(var_y), np.sqrt(var_pi)
+auto_y  = np.sum((C_y  * sig)**2 * rho / (1 - rho**2)) / var_y
+auto_pi = np.sum((C_pi * sig)**2 * rho / (1 - rho**2)) / var_pi
+corr_ypi = np.sum(C_y * C_pi * sig**2 / (1 - rho**2)) / (std_y * std_pi)
 
-# ============================================================
-# Final baseline policy vectors (ψ_y = 0.08)
-# ============================================================
-C_pi = np.array([-0.1758,  0.0794,  0.0107, -0.0910,  0.0514,  0.0175])
-C_y  = np.array([ 0.1103, -1.4121, -0.3148, -1.4445,  1.0461, -0.7360])
-
-# Persistence and shock volatilities
-rho   = np.array([0.684, 0.773, 0.739, 0.900, 0.869, 0.811])
-sigma = np.array([0.0129, 0.0051, 0.1308, 0.0020, 0.0302, 0.0312])
-names = ['Tech', 'US Infl', 'Oil', 'Fed Rate', 'Transfers', 'Shipping']
-
-# ============================================================
-# Asymptotic moments
-# ============================================================
-# Variances
-var_y  = np.sum( (C_y  * sigma)**2 / (1 - rho**2) )
-var_pi = np.sum( (C_pi * sigma)**2 / (1 - rho**2) )
-
-std_y  = np.sqrt(var_y)
-std_pi = np.sqrt(var_pi)
-
-# First-order autocorrelations
-auto_y  = np.sum( (C_y  * sigma)**2 * rho / (1 - rho**2) ) / var_y
-auto_pi = np.sum( (C_pi * sigma)**2 * rho / (1 - rho**2) ) / var_pi
-
-# Contemporaneous correlation
-cov_ypi  = np.sum( C_y * C_pi * sigma**2 / (1 - rho**2) )
-corr_ypi = cov_ypi / (std_y * std_pi)
-
-# ============================================================
-# Display
-# ============================================================
-print("=" * 65)
-print("ASYMPTOTIC BUSINESS CYCLE MOMENTS (Final Vectors, ψ_y = 0.08)")
-print("=" * 65)
-print(f"{'Moment':<35} {'Model':>12}")
-print("-" * 50)
-print(f"{'σ(y)  – Output Gap':<35} {std_y:12.4f}")
-print(f"{'σ(π)  – CPI Inflation':<35} {std_pi:12.4f}")
-print(f"{'ρ(y_t, y_{t-1})':<35} {auto_y:12.4f}")
-print(f"{'ρ(π_t, π_{t-1})':<35} {auto_pi:12.4f}")
-print(f"{'Corr(y_t, π_t)':<35} {corr_ypi:12.4f}")
-print("=" * 65)
-
+print("="*65)
+print("ASYMPTOTIC BUSINESS CYCLE MOMENTS (Baseline)")
+print("="*65)
+print(f"{'σ(y)':<35} {std_y:12.4f}")
+print(f"{'σ(π)':<35} {std_pi:12.4f}")
+print(f"{'ρ(y_t,y_{t-1})':<35} {auto_y:12.4f}")
+print(f"{'ρ(π_t,π_{t-1})':<35} {auto_pi:12.4f}")
+print(f"{'Corr(y,π)':<35} {corr_ypi:12.4f}")
 print("\nContribution to asymptotic output variance (%):")
-share_y = 100 * (C_y * sigma)**2 / (1 - rho**2) / var_y
-for n, s in zip(names, share_y):
+for n, s in zip(names, 100*(C_y*sig)**2/(1-rho**2)/var_y):
     print(f"  {n:<12}: {s:6.2f}%")
+print()
 
-# =====================
-
-# FEVD and IRF
-
-# ===================
-
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# ============================================================
-# Final policy vectors (ψ_y = 0.08)
-# ============================================================
-# Baseline
-C_pi_b = np.array([-0.1758,  0.0794,  0.0107, -0.0910,  0.0514,  0.0175])
-C_y_b  = np.array([ 0.1103, -1.4121, -0.3148, -1.4445,  1.0461, -0.7360])
-
-# Repeal
-C_pi_r = np.array([-0.1758,  0.0794,  0.0085, -0.0910,  0.0514,  0.0000])
-C_y_r  = np.array([ 0.1103, -1.4121, -0.2518, -1.4445,  1.0461,  0.0000])
-
-rho   = np.array([0.684, 0.773, 0.739, 0.900, 0.869, 0.811])
-sigma = np.array([0.0129, 0.0051, 0.1308, 0.0020, 0.0302, 0.0312])
-names = ['Tech', 'US Infl', 'Oil', 'Fed Rate', 'Transfers', 'Shipping']
-
-# ============================================================
-# Finite-horizon FEVD
-# ============================================================
-def fevd(C, horizons=[1, 4, 8, 20]):
+# ------------------------------------------------------------
+# FEVD helpers
+# ------------------------------------------------------------
+def fevd(C, horizons=[1,4,8,20]):
     out = {}
     for H in horizons:
         cum = np.zeros(6)
         for h in range(H):
-            cum += (C * (rho**h) * sigma)**2
+            cum += (C * (rho**h) * sig)**2
         out[H] = 100 * cum / cum.sum()
     return out
 
-fevd_y_b  = fevd(C_y_b)
-fevd_pi_b = fevd(C_pi_b)
-fevd_y_r  = fevd(C_y_r)
-fevd_pi_r = fevd(C_pi_r)
-
-# ============================================================
-# Asymptotic FEVD
-# ============================================================
 def asy(C):
-    v = (C * sigma)**2 / (1 - rho**2)
+    v = (C * sig)**2 / (1 - rho**2)
     return 100 * v / v.sum()
 
-asy_y_b  = asy(C_y_b)
-asy_pi_b = asy(C_pi_b)
-asy_y_r  = asy(C_y_r)
-asy_pi_r = asy(C_pi_r)
+fevd_y_b, fevd_pi_b = fevd(C_y_b), fevd(C_pi_b)
+asy_y_b, asy_pi_b   = asy(C_y_b), asy(C_pi_b)
+asy_y_r, asy_pi_r   = asy(C_y_r), asy(C_pi_r)
 
-# ============================================================
-# TABLE 4 – Finite-horizon FEVD (Baseline)
-# ============================================================
 print("="*75)
 print("TABLE 4 – Finite-horizon FEVD – BASELINE (%)")
 print("="*75)
-
 print("\nPanel A: Output Gap")
-df_y = pd.DataFrame({
+print(pd.DataFrame({
     'Horizon': ['Q1','Q4','Q8','Q20'],
-    'Tech':      [fevd_y_b[1][0], fevd_y_b[4][0], fevd_y_b[8][0], fevd_y_b[20][0]],
-    'US Infl':   [fevd_y_b[1][1], fevd_y_b[4][1], fevd_y_b[8][1], fevd_y_b[20][1]],
-    'Oil':       [fevd_y_b[1][2], fevd_y_b[4][2], fevd_y_b[8][2], fevd_y_b[20][2]],
-    'Fed Rate':  [fevd_y_b[1][3], fevd_y_b[4][3], fevd_y_b[8][3], fevd_y_b[20][3]],
-    'Transfers': [fevd_y_b[1][4], fevd_y_b[4][4], fevd_y_b[8][4], fevd_y_b[20][4]],
-    'Shipping':  [fevd_y_b[1][5], fevd_y_b[4][5], fevd_y_b[8][5], fevd_y_b[20][5]]
-}).round(2)
-print(df_y.to_string(index=False))
+    'Tech':      [fevd_y_b[h][0] for h in [1,4,8,20]],
+    'US Infl':   [fevd_y_b[h][1] for h in [1,4,8,20]],
+    'Oil':       [fevd_y_b[h][2] for h in [1,4,8,20]],
+    'Fed Rate':  [fevd_y_b[h][3] for h in [1,4,8,20]],
+    'Transfers': [fevd_y_b[h][4] for h in [1,4,8,20]],
+    'Shipping':  [fevd_y_b[h][5] for h in [1,4,8,20]],
+}).round(2).to_string(index=False))
 
 print("\nPanel B: Inflation")
-df_pi = pd.DataFrame({
+print(pd.DataFrame({
     'Horizon': ['Q1','Q4','Q8','Q20'],
-    'Tech':      [fevd_pi_b[1][0], fevd_pi_b[4][0], fevd_pi_b[8][0], fevd_pi_b[20][0]],
-    'US Infl':   [fevd_pi_b[1][1], fevd_pi_b[4][1], fevd_pi_b[8][1], fevd_pi_b[20][1]],
-    'Oil':       [fevd_pi_b[1][2], fevd_pi_b[4][2], fevd_pi_b[8][2], fevd_pi_b[20][2]],
-    'Fed Rate':  [fevd_pi_b[1][3], fevd_pi_b[4][3], fevd_pi_b[8][3], fevd_pi_b[20][3]],
-    'Transfers': [fevd_pi_b[1][4], fevd_pi_b[4][4], fevd_pi_b[8][4], fevd_pi_b[20][4]],
-    'Shipping':  [fevd_pi_b[1][5], fevd_pi_b[4][5], fevd_pi_b[8][5], fevd_pi_b[20][5]]
-}).round(2)
-print(df_pi.to_string(index=False))
+    'Tech':      [fevd_pi_b[h][0] for h in [1,4,8,20]],
+    'US Infl':   [fevd_pi_b[h][1] for h in [1,4,8,20]],
+    'Oil':       [fevd_pi_b[h][2] for h in [1,4,8,20]],
+    'Fed Rate':  [fevd_pi_b[h][3] for h in [1,4,8,20]],
+    'Transfers': [fevd_pi_b[h][4] for h in [1,4,8,20]],
+    'Shipping':  [fevd_pi_b[h][5] for h in [1,4,8,20]],
+}).round(2).to_string(index=False))
 
-# ============================================================
-# TABLE 5 – Asymptotic FEVD
-# ============================================================
 print("\n" + "="*75)
 print("TABLE 5 – Asymptotic FEVD – Baseline vs Repeal (%)")
 print("="*75)
-
-df_asy = pd.DataFrame({
+print(pd.DataFrame({
     'Tech':      [asy_y_b[0], asy_pi_b[0], asy_y_r[0], asy_pi_r[0]],
     'US Infl':   [asy_y_b[1], asy_pi_b[1], asy_y_r[1], asy_pi_r[1]],
     'Oil':       [asy_y_b[2], asy_pi_b[2], asy_y_r[2], asy_pi_r[2]],
     'Fed Rate':  [asy_y_b[3], asy_pi_b[3], asy_y_r[3], asy_pi_r[3]],
     'Transfers': [asy_y_b[4], asy_pi_b[4], asy_y_r[4], asy_pi_r[4]],
-    'Shipping':  [asy_y_b[5], asy_pi_b[5], asy_y_r[5], asy_pi_r[5]]
-}, index=['Baseline Output', 'Baseline Inflation',
-          'Repeal Output',   'Repeal Inflation']).round(2)
-print(df_asy)
+    'Shipping':  [asy_y_b[5], asy_pi_b[5], asy_y_r[5], asy_pi_r[5]],
+}, index=['Baseline Output','Baseline Inflation','Repeal Output','Repeal Inflation']).round(2))
 
-# ============================================================
-# STANDARDIZED IRFs
-# ============================================================
+# ------------------------------------------------------------
+# Standardized IRFs
+# ------------------------------------------------------------
 horizon = 20
 h = np.arange(horizon)
-shock_names = ['Technology', 'US Inflation', 'Oil Price', 'FFR', 'Transfers', 'Shipping']
+shock_names = ['Technology','US Inflation','Oil Price','FFR','Transfers','Shipping']
 
 def irf(C, j):
     return C[j] * (rho[j] ** h)
 
-# --- Output ---
 fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharex=True)
 axes = axes.flatten()
 for j in range(6):
@@ -286,7 +195,6 @@ plt.tight_layout()
 plt.savefig('IRF_Output_Final.png', dpi=300, bbox_inches='tight')
 plt.show()
 
-# --- Inflation ---
 fig, axes = plt.subplots(2, 3, figsize=(14, 8), sharex=True)
 axes = axes.flatten()
 for j in range(6):
