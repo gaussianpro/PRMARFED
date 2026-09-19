@@ -267,7 +267,7 @@ print(df_asy)
 # ============================================================
 horizon = 20
 h = np.arange(horizon)
-shock_names = ['Technology', 'US Inflation', 'Oil Price', 'Fed Funds', 'Transfers', 'Shipping']
+shock_names = ['Technology', 'US Inflation', 'Oil Price', 'FFR', 'Transfers', 'Shipping']
 
 def irf(C, j):
     return C[j] * (rho[j] ** h)
