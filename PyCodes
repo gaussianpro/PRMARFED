@@ -2,10 +2,10 @@
 # into the NKPC (ψ_y). Produces the baseline and repeal policy vectors
 # used in the paper.
 
-#===========
+# ===========
 # policy vectors
 
-#============
+# ============
 
 import numpy as np
 from numpy.linalg import solve
