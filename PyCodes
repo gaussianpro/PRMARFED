@@ -173,7 +173,7 @@ print(pd.DataFrame({
 # ------------------------------------------------------------
 horizon = 20
 h = np.arange(horizon)
-shock_names = ['Technology','US Inflation','Oil Price','FFR','Transfers','Shipping']
+shock_names = ['Productivity','US Inflation','Oil Price','FFR','Transfers','Shipping']
 
 def irf(C, j):
     return C[j] * (rho[j] ** h)
